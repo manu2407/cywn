@@ -61,11 +61,27 @@ safe_rm() {
 
 refresh_keys() {
   msg "Refreshing Arch Keyring & Databases..."
+  
+  # Check for lock file
+  if [ -f /var/lib/pacman/db.lck ]; then
+    warn "Pacman lock file detected (/var/lib/pacman/db.lck)."
+    warn "Waiting 5 seconds to see if it clears..."
+    sleep 5
+    if [ -f /var/lib/pacman/db.lck ]; then
+      warn "Lock file still exists. Attempting to remove it (sudo required)..."
+      sudo rm /var/lib/pacman/db.lck
+      add "Removed stale lock file"
+    fi
+  fi
+
   # Update keyring first to avoid signature errors
   sudo pacman -Sy --noconfirm archlinux-keyring || warn "Keyring update failed, continuing..."
-  # Refresh database
-  sudo pacman -Sy || warn "Database refresh failed, continuing..."
-  ok "Keys & DBs refreshed"
+  
+  # Full system upgrade to fix partial upgrade states
+  msg "Performing full system upgrade (fixes 'failed to prepare transaction')..."
+  sudo pacman -Syu --noconfirm || warn "System upgrade failed, continuing..."
+  
+  ok "System updated & keys refreshed"
 }
 
 # ------------------------------------------------------------
