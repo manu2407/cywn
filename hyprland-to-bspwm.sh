@@ -178,6 +178,52 @@ done
 echo
 
 # ------------------------------------------------------------
+# GPU driver handling (X11 sanity)
+# ------------------------------------------------------------
+msg "Checking GPU and X11 drivers"
+
+GPU_INFO=$(lspci | grep -E "VGA|3D")
+
+echo "     GPU detected:"
+echo "     $GPU_INFO"
+echo
+
+# ---- Intel ----
+if echo "$GPU_INFO" | grep -qi intel; then
+  msg "Intel GPU detected"
+  install_pkgs mesa xf86-video-intel
+  ok "Intel X11 drivers ready"
+fi
+
+# ---- AMD ----
+if echo "$GPU_INFO" | grep -qi amd; then
+  msg "AMD GPU detected"
+  install_pkgs mesa xf86-video-amdgpu
+  ok "AMD X11 drivers ready"
+fi
+
+# ---- NVIDIA ----
+if echo "$GPU_INFO" | grep -qi nvidia; then
+  msg "NVIDIA GPU detected (brace yourself)"
+
+  install_pkgs nvidia nvidia-utils nvidia-settings
+
+  # enable DRM modeset (important for stability)
+  if ! grep -q "nvidia-drm.modeset=1" /etc/default/grub 2>/dev/null; then
+    msg "Enabling nvidia DRM modeset"
+    sudo sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="nvidia-drm.modeset=1 /' /etc/default/grub
+    sudo grub-mkconfig -o /boot/grub/grub.cfg
+    add "Updated GRUB for NVIDIA"
+  else
+    skip "NVIDIA DRM modeset already enabled"
+  fi
+
+  ok "NVIDIA drivers installed"
+fi
+
+echo
+
+# ------------------------------------------------------------
 # LightDM
 # ------------------------------------------------------------
 msg "Installing and enabling LightDM"
