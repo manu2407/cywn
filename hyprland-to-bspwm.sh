@@ -49,6 +49,15 @@ safe_rm() {
   fi
 }
 
+refresh_keys() {
+  msg "Refreshing Arch Keyring & Databases..."
+  # Update keyring first to avoid signature errors
+  sudo pacman -Sy --noconfirm archlinux-keyring
+  # Refresh database
+  sudo pacman -Sy
+  ok "Keys & DBs refreshed"
+}
+
 # ------------------------------------------------------------
 # Argument Parsing
 # ------------------------------------------------------------
@@ -86,6 +95,12 @@ if ! command -v pacman >/dev/null; then
   exit 1
 fi
 ok "Running on Arch"
+echo
+
+# ------------------------------------------------------------
+# Refresh Keys (Fix "failed to prepare transaction")
+# ------------------------------------------------------------
+refresh_keys
 echo
 
 # ------------------------------------------------------------
