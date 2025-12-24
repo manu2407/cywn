@@ -12,48 +12,42 @@ set -e
 #  It will just skip what isn't there.
 # ============================================================
 
+# Source helpers
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/lib.sh" ]; then
+  source "$SCRIPT_DIR/lib.sh"
+else
+  echo "Error: lib.sh not found in $SCRIPT_DIR"
+  exit 1
+fi
+
+# ------------------------------------------------------------
+# Argument Parsing
+# ------------------------------------------------------------
+SKIP_LIGHTDM=false
+KEEP_WAYLAND=false
+
+for arg in "$@"; do
+  case $arg in
+    --no-lightdm)
+      SKIP_LIGHTDM=true
+      ;;
+    --keep-wayland)
+      KEEP_WAYLAND=true
+      ;;
+    *)
+      echo "Unknown argument: $arg"
+      echo "Usage: $0 [--no-lightdm] [--keep-wayland]"
+      exit 1
+      ;;
+  esac
+done
+
 echo
 echo "=============================================="
 echo "  (╯°□°）╯︵  Hyprland → bspwm"
 echo "=============================================="
 echo
-
-# ------------------------------------------------------------
-# small helpers so logs don't look dead inside
-# ------------------------------------------------------------
-msg()   { echo "  -> $1"; }
-ok()    { echo "     ✓ $1"; }
-skip()  { echo "     · $1"; }
-add()   { echo "     + $1"; }
-rmv()   { echo "     - $1"; }
-
-is_installed() {
-  pacman -Q "$1" &>/dev/null
-}
-
-install_pkgs() {
-  sudo pacman -S --needed --noconfirm "$@"
-}
-
-remove_pkgs() {
-  for pkg in "$@"; do
-    if is_installed "$pkg"; then
-      rmv "Removing $pkg"
-      sudo pacman -Rns --noconfirm "$pkg"
-    else
-      skip "$pkg not installed"
-    fi
-  done
-}
-
-safe_rm() {
-  if [ -e "$1" ]; then
-    rm -rf "$1"
-    rmv "Removed $1"
-  else
-    skip "$1 not found"
-  fi
-}
 
 # ------------------------------------------------------------
 # sanity check
@@ -69,29 +63,37 @@ echo
 # ------------------------------------------------------------
 # remove Hyprland / Wayland bits
 # ------------------------------------------------------------
-msg "Removing Hyprland / Wayland stuff (if any)"
+if [ "$KEEP_WAYLAND" = true ]; then
+  skip "Skipping removal of Hyprland/Wayland packages (--keep-wayland)"
+else
+  msg "Removing Hyprland / Wayland stuff (if any)"
 
-remove_pkgs \
-  hyprland \
-  hyprpaper \
-  hyprlock \
-  hypridle \
-  xdg-desktop-portal-hyprland \
-  wayland \
-  wayland-protocols
+  remove_pkgs \
+    hyprland \
+    hyprpaper \
+    hyprlock \
+    hypridle \
+    xdg-desktop-portal-hyprland \
+    wayland \
+    wayland-protocols
+fi
 
 echo
 
 # ------------------------------------------------------------
 # clean leftover configs
 # ------------------------------------------------------------
-msg "Cleaning leftover config folders"
+if [ "$KEEP_WAYLAND" = true ]; then
+  skip "Skipping config cleanup (--keep-wayland)"
+else
+  msg "Cleaning leftover config folders"
 
-safe_rm "$HOME/.config/hypr"
-safe_rm "$HOME/.config/wayland"
-safe_rm "$HOME/.config/xdg-desktop-portal"
+  safe_rm "$HOME/.config/hypr"
+  safe_rm "$HOME/.config/wayland"
+  safe_rm "$HOME/.config/xdg-desktop-portal"
 
-ok "Config cleanup done"
+  ok "Config cleanup done"
+fi
 echo
 
 # ------------------------------------------------------------
@@ -160,20 +162,24 @@ echo
 # ------------------------------------------------------------
 # clean Wayland env vars
 # ------------------------------------------------------------
-msg "Cleaning Wayland env vars from shell configs"
+if [ "$KEEP_WAYLAND" = true ]; then
+  skip "Skipping env var cleanup (--keep-wayland)"
+else
+  msg "Cleaning Wayland env vars from shell configs"
 
-FILES=(
-  "$HOME/.profile"
-  "$HOME/.bashrc"
-  "$HOME/.bash_profile"
-  "$HOME/.config/fish/config.fish"
-)
+  FILES=(
+    "$HOME/.profile"
+    "$HOME/.bashrc"
+    "$HOME/.bash_profile"
+    "$HOME/.config/fish/config.fish"
+  )
 
-for file in "${FILES[@]}"; do
-  [ -f "$file" ] || continue
-  sed -i '/WAYLAND/d;/XDG_SESSION_TYPE/d;/GDK_BACKEND/d;/QT_QPA_PLATFORM/d' "$file"
-  add "Cleaned $(basename "$file")"
-done
+  for file in "${FILES[@]}"; do
+    [ -f "$file" ] || continue
+    sed -i '/WAYLAND/d;/XDG_SESSION_TYPE/d;/GDK_BACKEND/d;/QT_QPA_PLATFORM/d' "$file"
+    add "Cleaned $(basename "$file")"
+  done
+fi
 
 echo
 
@@ -221,17 +227,34 @@ if echo "$GPU_INFO" | grep -qi nvidia; then
   ok "NVIDIA drivers installed"
 fi
 
+# ---- Optimus (Intel + NVIDIA) ----
+if echo "$GPU_INFO" | grep -qi intel && echo "$GPU_INFO" | grep -qi nvidia; then
+  msg "Optimus (Intel + NVIDIA) detected"
+  if ! is_installed "optimus-manager"; then
+     msg "Installing optimus-manager for hybrid graphics"
+     install_pkgs optimus-manager
+     # Note: optimus-manager-qt is optional but good for GUI
+     ok "optimus-manager installed"
+  else
+     skip "optimus-manager already installed"
+  fi
+fi
+
 echo
 
 # ------------------------------------------------------------
 # LightDM
 # ------------------------------------------------------------
-msg "Installing and enabling LightDM"
+if [ "$SKIP_LIGHTDM" = true ]; then
+  skip "Skipping LightDM installation (--no-lightdm)"
+else
+  msg "Installing and enabling LightDM"
 
-install_pkgs lightdm lightdm-gtk-greeter
-sudo systemctl enable lightdm.service
+  install_pkgs lightdm lightdm-gtk-greeter
+  sudo systemctl enable lightdm.service
 
-ok "LightDM enabled"
+  ok "LightDM enabled"
+fi
 echo
 
 # ------------------------------------------------------------
@@ -242,7 +265,9 @@ echo "  (•‿•)  Done."
 echo
 echo "  What to do next:"
 echo "    • Reboot"
-echo "    • LightDM should come up"
+if [ "$SKIP_LIGHTDM" = false ]; then
+  echo "    • LightDM should come up"
+fi
 echo "    • Choose bspwm and log in"
 echo
 echo "  If something was already deleted,"
