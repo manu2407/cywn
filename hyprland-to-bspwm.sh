@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+# set -e  <-- Disabled to prevent crash on dependency checks
 
 # ============================================================
 #  Hyprland  ->  bspwm
@@ -20,20 +20,30 @@ ok()    { echo "     ✓ $1"; }
 skip()  { echo "     · $1"; }
 add()   { echo "     + $1"; }
 rmv()   { echo "     - $1"; }
+warn()  { echo "     ! $1"; }
 
 is_installed() {
   pacman -Q "$1" &>/dev/null
 }
 
 install_pkgs() {
-  sudo pacman -S --needed --noconfirm "$@"
+  # Try to install, but don't crash if it fails
+  if sudo pacman -S --needed --noconfirm "$@"; then
+    return 0
+  else
+    warn "Failed to install some packages. Continuing..."
+    return 0
+  fi
 }
 
 remove_pkgs() {
   for pkg in "$@"; do
     if is_installed "$pkg"; then
       rmv "Removing $pkg"
-      sudo pacman -Rns --noconfirm "$pkg"
+      # Try to remove, but don't crash if dependencies break it
+      if ! sudo pacman -Rns --noconfirm "$pkg"; then
+        warn "Could not remove $pkg (likely a dependency for something else). Skipping."
+      fi
     else
       skip "$pkg not installed"
     fi
@@ -52,9 +62,9 @@ safe_rm() {
 refresh_keys() {
   msg "Refreshing Arch Keyring & Databases..."
   # Update keyring first to avoid signature errors
-  sudo pacman -Sy --noconfirm archlinux-keyring
+  sudo pacman -Sy --noconfirm archlinux-keyring || warn "Keyring update failed, continuing..."
   # Refresh database
-  sudo pacman -Sy
+  sudo pacman -Sy || warn "Database refresh failed, continuing..."
   ok "Keys & DBs refreshed"
 }
 
@@ -111,14 +121,14 @@ if [ "$KEEP_WAYLAND" = true ]; then
 else
   msg "Removing Hyprland / Wayland stuff (if any)"
 
+  # NOTE: We do NOT remove 'wayland' or 'wayland-protocols' anymore
+  # because they are often hard dependencies for GTK/Qt/Mesa.
   remove_pkgs \
     hyprland \
     hyprpaper \
     hyprlock \
     hypridle \
-    xdg-desktop-portal-hyprland \
-    wayland \
-    wayland-protocols
+    xdg-desktop-portal-hyprland
 fi
 
 echo
